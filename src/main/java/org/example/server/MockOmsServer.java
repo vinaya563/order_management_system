@@ -8,13 +8,13 @@ import org.example.config.TestConfig;
 import org.example.db.OrderRepository;
 import org.example.model.OrderRequest;
 import org.example.model.OrderResponse;
-import org.example.model.PaymentResponse;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -24,7 +24,7 @@ public class MockOmsServer {
     private final HttpServer server;
     private final ObjectMapper mapper = new ObjectMapper();
     private final OrderRepository repository = new OrderRepository();
-    private final Map<String, String> tokens = new ConcurrentHashMap<>();
+    private final Set<String> tokens = ConcurrentHashMap.newKeySet();
     private final AtomicInteger orderSequence = new AtomicInteger();
 
     public MockOmsServer() throws IOException {
@@ -97,20 +97,23 @@ public class MockOmsServer {
         }
 
         String token = "token-" + UUID.randomUUID();
-        tokens.put(token, "user-1");
+        tokens.add(token);
 
-        writeJson(exchange, 200, Map.of("token", token, "userId", "user-1"));
+        writeJson(exchange, 200, Map.of("token", token));
     }
 
     private void createOrder(HttpExchange exchange) throws IOException {
-        String userId = authenticatedUser(exchange);
-        if (userId == null) {
+        if (!isAuthenticated(exchange)) {
             writeJson(exchange, 401, Map.of("message", "Unauthorized"));
             return;
         }
 
         OrderRequest request = mapper.readValue(exchange.getRequestBody(), OrderRequest.class);
 
+        if (request.productName() == null || request.productName().isBlank()) {
+            writeJson(exchange, 400, Map.of("message", "Product name is required"));
+            return;
+        }
         if (request.quantity() <= 0) {
             writeJson(exchange, 400, Map.of("message", "Quantity must be positive"));
             return;
@@ -120,15 +123,11 @@ public class MockOmsServer {
 
         OrderResponse order = new OrderResponse(
                 orderId,
-                userId,
-                request.productId(),
                 request.productName(),
                 request.quantity(),
                 request.unitPrice(),
-                request.totalAmount(),
                 "CREATED",
-                "PENDING",
-                null
+                "PENDING"
         );
 
         repository.save(order);
@@ -136,8 +135,7 @@ public class MockOmsServer {
     }
 
     private void processPayment(HttpExchange exchange) throws IOException {
-        String userId = authenticatedUser(exchange);
-        if (userId == null) {
+        if (!isAuthenticated(exchange)) {
             writeJson(exchange, 401, Map.of("message", "Unauthorized"));
             return;
         }
@@ -152,21 +150,23 @@ public class MockOmsServer {
             return;
         }
 
-        if (cardNumber.equals(TestConfig.failureCard())) {
-            repository.save(order.withPaymentStatus("PAYMENT_FAILED", "FAILED", null));
-            writeJson(exchange, 402, new PaymentResponse(orderId, "FAILED", null, "Payment failed"));
+        if ("SUCCESS".equals(order.paymentStatus())) {
+            writeJson(exchange, 409, Map.of("message", "Order already paid"));
             return;
         }
 
-        String transactionId = "TXN-" + UUID.randomUUID();
-        repository.save(order.withPaymentStatus("CONFIRMED", "SUCCESS", transactionId));
+        if (cardNumber.equals(TestConfig.failureCard())) {
+            repository.save(order.withStatus("PAYMENT_FAILED", "FAILED"));
+            writeJson(exchange, 402, Map.of("orderId", orderId, "paymentStatus", "FAILED", "message", "Payment failed"));
+            return;
+        }
 
-        writeJson(exchange, 200, new PaymentResponse(orderId, "SUCCESS", transactionId, "Payment successful"));
+        repository.save(order.withStatus("CONFIRMED", "SUCCESS"));
+        writeJson(exchange, 200, Map.of("orderId", orderId, "paymentStatus", "SUCCESS", "message", "Payment successful"));
     }
 
     private void getOrder(HttpExchange exchange, String orderId) throws IOException {
-        String userId = authenticatedUser(exchange);
-        if (userId == null) {
+        if (!isAuthenticated(exchange)) {
             writeJson(exchange, 401, Map.of("message", "Unauthorized"));
             return;
         }
@@ -180,12 +180,12 @@ public class MockOmsServer {
         writeJson(exchange, 200, order);
     }
 
-    private String authenticatedUser(HttpExchange exchange) {
+    private boolean isAuthenticated(HttpExchange exchange) {
         String authorization = exchange.getRequestHeaders().getFirst("Authorization");
         if (authorization == null || !authorization.startsWith("Bearer ")) {
-            return null;
+            return false;
         }
-        return tokens.get(authorization.substring("Bearer ".length()));
+        return tokens.contains(authorization.substring("Bearer ".length()));
     }
 
     private JsonNode readJson(HttpExchange exchange) throws IOException {
