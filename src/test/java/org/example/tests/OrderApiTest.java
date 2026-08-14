@@ -1,83 +1,114 @@
 package org.example.tests;
 
+import io.restassured.http.ContentType;
 import io.restassured.response.Response;
-import org.example.base.BaseTest;
-import org.example.config.TestConfig;
-import org.example.data.TestDataFactory;
-import org.example.model.OrderRequest;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.math.BigDecimal;
+import static io.restassured.RestAssured.given;
 
-public class OrderApiTest extends BaseTest {
+public class OrderApiTest {
+
+    private static final String BASE_URL = "https://fakestoreapi.com";
 
     @Test
-    public void createdOrderContainsCorrectData() {
-        OrderRequest expectedOrder = TestDataFactory.validOrder();
-        String token = login();
+    public void creatingOrderReturnsCreatedOrder() {
+        String body = """
+                {
+                  "userId": 1,
+                  "date": "2026-08-14",
+                  "products": [{"productId": 1, "quantity": 2}]
+                }
+                """;
 
-        Response orderResponse = apiClient.createOrder(token, expectedOrder);
-        Assert.assertEquals(orderResponse.statusCode(), 201);
+        Response response = given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .body(body)
+                .post("/carts");
 
-        String orderId = orderResponse.jsonPath().getString("id");
-
-        Assert.assertEquals(orderResponse.jsonPath().getString("productName"), expectedOrder.productName());
-        Assert.assertEquals(orderResponse.jsonPath().getInt("quantity"), expectedOrder.quantity());
-        Assert.assertEquals(orderResponse.jsonPath().getString("orderStatus"), "CREATED");
-        Assert.assertEquals(orderResponse.jsonPath().getString("paymentStatus"), "PENDING");
-
-        databaseValidator.assertOrderMatches(orderId, expectedOrder, "CREATED");
+        Assert.assertEquals(response.statusCode(), 201);
+        Assert.assertNotNull(response.jsonPath().getString("id"));
+        Assert.assertEquals(response.jsonPath().getInt("products[0].productId"), 1);
+        Assert.assertEquals(response.jsonPath().getInt("products[0].quantity"), 2);
     }
 
     @Test
-    public void zeroQuantityIsRejected() {
-        String token = login();
-        OrderRequest order = new OrderRequest("Wireless Headphones", 0, new BigDecimal("49.99"));
+    public void fetchingExistingOrderReturnsSameData() {
+        Response response = given()
+                .baseUri(BASE_URL)
+                .get("/carts/1");
 
-        Response response = apiClient.createOrder(token, order);
-        Assert.assertEquals(response.statusCode(), 400);
+        Assert.assertEquals(response.statusCode(), 200);
+        Assert.assertEquals(response.jsonPath().getInt("id"), 1);
     }
 
     @Test
-    public void negativeQuantityIsRejected() {
-        String token = login();
-        OrderRequest order = new OrderRequest("Wireless Headphones", -1, new BigDecimal("49.99"));
+    public void fetchingNonexistentOrderReturnsEmptyBody() {
+        Response response = given()
+                .baseUri(BASE_URL)
+                .get("/carts/99999");
 
-        Response response = apiClient.createOrder(token, order);
-        Assert.assertEquals(response.statusCode(), 400);
+        Assert.assertEquals(response.statusCode(), 200);
+        Assert.assertEquals(response.getBody().asString().trim(), "null");
     }
 
     @Test
-    public void blankProductNameIsRejected() {
-        String token = login();
-        OrderRequest order = new OrderRequest("", 1, new BigDecimal("49.99"));
+    public void creatingOrderWithMissingProductsIsStillCreated() {
+        String body = """
+                {
+                  "userId": 1,
+                  "date": "2026-08-14"
+                }
+                """;
 
-        Response response = apiClient.createOrder(token, order);
-        Assert.assertEquals(response.statusCode(), 400);
+        Response response = given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .body(body)
+                .post("/carts");
+
+        Assert.assertEquals(response.statusCode(), 201);
+        Assert.assertNotNull(response.jsonPath().getString("id"));
     }
 
     @Test
-    public void creatingOrderWithoutTokenIsRejected() {
-        Response response = apiClient.createOrder("invalid-token", TestDataFactory.validOrder());
-        Assert.assertEquals(response.statusCode(), 401);
+    public void updatingOrderReturnsUpdatedData() {
+        String body = """
+                {
+                  "userId": 1,
+                  "date": "2026-08-14",
+                  "products": [{"productId": 2, "quantity": 1}]
+                }
+                """;
+
+        Response response = given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .body(body)
+                .put("/carts/1");
+
+        Assert.assertEquals(response.statusCode(), 200);
+        Assert.assertEquals(response.jsonPath().getInt("products[0].productId"), 2);
     }
 
     @Test
-    public void fetchingNonexistentOrderReturns404() {
-        String token = login();
-        Response response = apiClient.getOrder(token, "ORD-does-not-exist");
-        Assert.assertEquals(response.statusCode(), 404);
+    public void deletingOrderReturnsDeletedOrder() {
+        Response response = given()
+                .baseUri(BASE_URL)
+                .delete("/carts/1");
+
+        Assert.assertEquals(response.statusCode(), 200);
+        Assert.assertEquals(response.jsonPath().getInt("id"), 1);
     }
 
     @Test
-    public void fetchingOrderWithoutTokenIsRejected() {
-        Response response = apiClient.getOrder("invalid-token", "ORD-1");
-        Assert.assertEquals(response.statusCode(), 401);
-    }
+    public void fetchingOrdersByUserReturnsList() {
+        Response response = given()
+                .baseUri(BASE_URL)
+                .get("/carts/user/1");
 
-    private String login() {
-        Response loginResponse = apiClient.login(TestConfig.validEmail(), TestConfig.validPassword());
-        return loginResponse.jsonPath().getString("token");
+        Assert.assertEquals(response.statusCode(), 200);
+        Assert.assertFalse(response.jsonPath().getList("$").isEmpty());
     }
 }

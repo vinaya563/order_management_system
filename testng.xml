@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+<suite name="OmsApiSuite" parallel="classes" thread-count="4">
+    <test name="AllApiTests">
+        <classes>
+            <class name="org.example.tests.AuthApiTest"/>
+            <class name="org.example.tests.ProductApiTest"/>
+            <class name="org.example.tests.OrderApiTest"/>
+            <class name="org.example.tests.DatabaseValidationTest"/>
+        </classes>
+    </test>
+</suite>

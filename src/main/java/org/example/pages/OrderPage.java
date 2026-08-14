@@ -1,41 +1,53 @@
 package org.example.pages;
 
-import org.example.model.OrderRequest;
-import org.openqa.selenium.By;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.support.ui.ExpectedConditions;
-import org.openqa.selenium.support.ui.WebDriverWait;
+import io.restassured.http.ContentType;
+import io.restassured.response.Response;
+import org.example.models.OrderRequest;
+import org.example.models.OrderResponse;
+
+import static io.restassured.RestAssured.given;
 
 public class OrderPage {
 
-    private final WebDriver driver;
-    private final WebDriverWait wait;
+    private static final String BASE_URL = "https://fakestoreapi.com";
 
-    private final By productName = By.id("productName");
-    private final By quantity = By.id("quantity");
-    private final By unitPrice = By.id("unitPrice");
-    private final By createOrderButton = By.id("createOrderButton");
-    private final By orderId = By.id("orderId");
-    private final By paymentSection = By.id("paymentSection");
-
-    public OrderPage(WebDriver driver) {
-        this.driver = driver;
-        this.wait = new WebDriverWait(driver, 5);
+    public Response createOrder(String body) {
+        return given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .body(body)
+                .post("/carts");
     }
 
-    public PaymentPage createOrder(OrderRequest order) {
-        driver.findElement(productName).sendKeys(order.productName());
-        driver.findElement(quantity).sendKeys(String.valueOf(order.quantity()));
-        driver.findElement(unitPrice).sendKeys(order.unitPrice().toString());
-        driver.findElement(createOrderButton).click();
-
-        wait.until(ExpectedConditions.visibilityOfElementLocated(orderId));
-        wait.until(ExpectedConditions.visibilityOfElementLocated(paymentSection));
-
-        return new PaymentPage(driver);
+    public Response createOrder(OrderRequest request) {
+        return given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .body(request)
+                .post("/carts");
     }
 
-    public String getCreatedOrderId() {
-        return driver.findElement(orderId).getText();
+    public Response getOrder(String id) {
+        return given().baseUri(BASE_URL).get("/carts/" + id);
+    }
+
+    public OrderResponse getOrderAsModel(String id) {
+        return getOrder(id).as(OrderResponse.class);
+    }
+
+    public Response getOrdersByUser(String userId) {
+        return given().baseUri(BASE_URL).get("/carts/user/" + userId);
+    }
+
+    public Response updateOrder(String id, String body) {
+        return given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .body(body)
+                .put("/carts/" + id);
+    }
+
+    public Response deleteOrder(String id) {
+        return given().baseUri(BASE_URL).delete("/carts/" + id);
     }
 }
