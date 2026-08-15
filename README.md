@@ -45,15 +45,11 @@ Tests run in parallel (4 threads, one per class) - see `testng.xml`.
 
 Added two sample pipelines just to show how this would run in CI:
 
-- `.github/workflows/ci.yml` (GitHub Actions)
 - `Jenkinsfile` (Jenkins)
 
-Both just run `mvn test` and save the reports.
+ just run `mvn test` and save the reports.
 
-## Assumptions
 
-- FakeStoreAPI doesn't really save anything, so create/update/delete tests just check the response, not real persistence.
-- `DatabaseValidationTest` uses a fake in-memory DB (`OrderDatabase`) since there's no real DB to connect to. It's there to show how DB validation would be written.
-- No login token is used in other tests - the API doesn't need one.
-- Test data (user id, product id, etc.) is hardcoded since the fake API's data doesn't change.
-- No UI/Selenium tests, this is API only.
+
+## Results
+<img width="1599" height="899" alt="WhatsApp Image 2026-08-14 at 09 52 48" src="https://github.com/user-attachments/assets/5f27df68-f0b2-4450-8c5b-12ff8c003e60" />
